@@ -2,6 +2,8 @@ use regex::Regex;
 use reqwest::Error;
 use reqwest::blocking::get;
 use std::collections::HashMap;
+use semver::{Version, VersionReq};
+use std::env;
 
 #[derive(Debug)]
 struct ChangelogEntry {
@@ -62,15 +64,38 @@ fn parse_changelog(content: &str) -> HashMap<String, ChangelogEntry> {
 
 fn main() {
     let url = "https://raw.githubusercontent.com/sleede/fab-manager/refs/heads/master/CHANGELOG.md"; // Replace with your URL
+    // Collect the arguments into a vector
+    let args: Vec<String> = env::args().collect();
+
+    // Check if there is at least one argument
+    if args.len() != 2 {
+        println!("No arguments were provided.");
+        return;
+    }
+    let req = VersionReq::parse(&args[1]).unwrap();
 
     match fetch_changelog(url) {
         Ok(content) => {
             let changelog_entries = parse_changelog(&content);
             for (version, entry) in changelog_entries {
+                /*
                 println!(
                     "Version: {}\nDate: {}\nContent:\n{:?}\n",
                     version, entry.date, entry.changes
                 );
+                */
+                let text = version.strip_prefix("v").unwrap();
+                let v = Version::parse(text).unwrap();
+                if req.matches(&v) {
+                    let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
+                    if !contains_todo {
+                        continue;
+                    }
+                    println!(
+                        "Version: {}\nDate: {}\nContent:\n{:?}\n",
+                        version, entry.date, entry.changes
+                    );                    
+                }
             }
         }
         Err(e) => eprintln!("Error fetching changelog: {}", e),
