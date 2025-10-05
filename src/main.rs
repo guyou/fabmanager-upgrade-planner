@@ -5,7 +5,7 @@ use log::{debug, error, info};
 use reqwest::Client;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
-use std::env;
+use std::{collections::VecDeque, env};
 
 #[derive(Debug)]
 struct ChangelogEntry {
@@ -20,11 +20,11 @@ async fn fetch_changelog(client: &Client) -> Result<String, Error> {
     Ok(response)
 }
 
-fn parse_changelog(content: &str) -> Vec<ChangelogEntry> {
+fn parse_changelog(content: &str) -> VecDeque<ChangelogEntry> {
     // Regex to match version entries (assuming format '## [version] - YYYY-MM-DD')
     let re = Regex::new(r"## (v.*?) (.*)").unwrap();
 
-    let mut entries = Vec::new();
+    let mut entries = VecDeque::new();
     let mut current_version = String::new();
     let mut current_date = String::new();
     let mut current_changes = Vec::new();
@@ -33,7 +33,7 @@ fn parse_changelog(content: &str) -> Vec<ChangelogEntry> {
         if line.starts_with("## ") {
             // Store the previous entry before moving to the next
             if !current_version.is_empty() {
-                entries.push(ChangelogEntry {
+                entries.push_front(ChangelogEntry {
                     version: current_version.clone(),
                     date: current_date.clone(),
                     changes: current_changes,
@@ -52,7 +52,7 @@ fn parse_changelog(content: &str) -> Vec<ChangelogEntry> {
 
     // Store the last entry after loop ends
     if !current_version.is_empty() {
-        entries.push(ChangelogEntry {
+        entries.push_front(ChangelogEntry {
             version: current_version.clone(),
             date: current_date,
             changes: current_changes,
