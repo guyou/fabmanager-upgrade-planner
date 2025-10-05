@@ -5,11 +5,11 @@ use log::{debug, error, info};
 use reqwest::Client;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::env;
 
 #[derive(Debug)]
 struct ChangelogEntry {
+    version: String,
     date: String,
     changes: Vec<String>,
 }
@@ -20,11 +20,11 @@ async fn fetch_changelog(client: &Client) -> Result<String, Error> {
     Ok(response)
 }
 
-fn parse_changelog(content: &str) -> HashMap<String, ChangelogEntry> {
+fn parse_changelog(content: &str) -> Vec<ChangelogEntry> {
     // Regex to match version entries (assuming format '## [version] - YYYY-MM-DD')
     let re = Regex::new(r"## (v.*?) (.*)").unwrap();
 
-    let mut entries = HashMap::new();
+    let mut entries = Vec::new();
     let mut current_version = String::new();
     let mut current_date = String::new();
     let mut current_changes = Vec::new();
@@ -33,13 +33,11 @@ fn parse_changelog(content: &str) -> HashMap<String, ChangelogEntry> {
         if line.starts_with("## ") {
             // Store the previous entry before moving to the next
             if !current_version.is_empty() {
-                entries.insert(
-                    current_version.clone(),
-                    ChangelogEntry {
-                        date: current_date.clone(),
-                        changes: current_changes,
-                    },
-                );
+                entries.push(ChangelogEntry {
+                    version: current_version.clone(),
+                    date: current_date.clone(),
+                    changes: current_changes,
+                });
                 current_changes = Vec::new(); // Clear the previous content for the next entry
             }
             if let Some(cap) = re.captures(line) {
@@ -54,13 +52,11 @@ fn parse_changelog(content: &str) -> HashMap<String, ChangelogEntry> {
 
     // Store the last entry after loop ends
     if !current_version.is_empty() {
-        entries.insert(
-            current_version,
-            ChangelogEntry {
-                date: current_date,
-                changes: current_changes,
-            },
-        );
+        entries.push(ChangelogEntry {
+            version: current_version.clone(),
+            date: current_date,
+            changes: current_changes,
+        });
     }
 
     entries
@@ -127,14 +123,14 @@ async fn main() {
     match fetch_changelog(&client).await {
         Ok(content) => {
             let changelog_entries = parse_changelog(&content);
-            for (version, entry) in changelog_entries {
+            for entry in changelog_entries {
                 /*
                 println!(
                     "Version: {}\nDate: {}\nContent:\n{:?}\n",
                     version, entry.date, entry.changes
                 );
                 */
-                let text = version.strip_prefix("v").unwrap();
+                let text = entry.version.strip_prefix("v").unwrap();
                 let v = Version::parse(text).unwrap();
                 if req.matches(&v) {
                     let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
@@ -143,13 +139,13 @@ async fn main() {
                     }
                     info!(
                         "Version: {}\nDate: {}\nContent:\n{:?}\n",
-                        version, entry.date, entry.changes
+                        entry.version, entry.date, entry.changes
                     );
-                    let release = fetch_release(&client, &version).await.unwrap();
+                    let release = fetch_release(&client, &entry.version).await.unwrap();
                     if let Some(release) = parse_release(&release) {
-                        println!("Update to release {}: {:?}", version, release.update)
+                        println!("Update to release {}: {:?}", entry.version, release.update)
                     } else {
-                        error!("No update found for {}", version);
+                        error!("No update found for {}", entry.version);
                     }
                 }
             }
