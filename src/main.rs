@@ -111,6 +111,7 @@ fn parse_release(content: &str) -> Option<Release> {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     // Collect the arguments into a vector
     let args: Vec<String> = env::args().collect();
 
