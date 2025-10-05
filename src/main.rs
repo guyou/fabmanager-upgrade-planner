@@ -130,8 +130,8 @@ async fn main() {
                     version, entry.date, entry.changes
                 );
                 */
-                let text = entry.version.strip_prefix("v").unwrap();
-                let v = Version::parse(text).unwrap();
+                let raw_version = entry.version.strip_prefix("v").unwrap();
+                let v = Version::parse(raw_version).unwrap();
                 if req.matches(&v) {
                     let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
                     if !contains_todo {
@@ -143,7 +143,8 @@ async fn main() {
                     );
                     let release = fetch_release(&client, &entry.version).await.unwrap();
                     if let Some(release) = parse_release(&release) {
-                        println!("Update to release {}: {:?}", entry.version, release.update)
+                        let upgrade_cmd = release.update.replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
+                        println!("Update to release {}:\n{}", entry.version, upgrade_cmd)
                     } else {
                         error!("No update found for {}", entry.version);
                     }
