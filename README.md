@@ -33,11 +33,17 @@ cargo run --release
 ```
 
 ### Command-Line Arguments
-A semver expression.
+
 
 #### Example
 ```bash
-cargo run --release ">4.7.14, <=5.6.11"
+cargo run --release -- --from "4.7.14"
+```
+
+This command first fetch for the next release (here `5.6.11`) and then generates an upgrade plan from version `4.7.14` to `5.6.11`.
+
+```bash
+cargo run --release -- --from "4.7.14" --to "5.6.11"
 ```
 
 This command generates an upgrade plan from version `4.7.14` to `5.6.11`.

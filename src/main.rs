@@ -1,11 +1,34 @@
 use regex::Regex;
 use reqwest::Error;
 //use reqwest::blocking::Client;
+use clap::Parser;
 use log::{debug, error, info};
 use reqwest::Client;
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::Deserialize;
-use std::{collections::VecDeque, env};
+use std::collections::VecDeque;
+
+
+#[derive(Deserialize, Debug)]
+struct NextRelease {
+    semver: String,
+    url: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct NextResponse {
+    next_step: NextRelease,
+}
+
+async fn fetch_next(client: &Client, current: &str) -> Result<NextRelease, Error> {
+    let url = format!(
+        "https://hub.fab-manager.com/api/versions/next_step?version={}",
+        current
+    );
+    let response = client.get(url).send().await.unwrap();
+    let response = response.json::<NextResponse>().await.unwrap();
+    Ok(response.next_step)
+}
 
 #[derive(Debug)]
 struct ChangelogEntry {
@@ -105,20 +128,51 @@ fn parse_release(content: &str) -> Option<Release> {
     }
 }
 
+#[derive(Parser)]
+struct Cli {
+    /// The initial version
+    #[arg(short, long)]
+    from: String,
+    /// The target version
+    #[arg(short, long)]
+    to: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
     // Collect the arguments into a vector
-    let args: Vec<String> = env::args().collect();
-
-    // Check if there is at least one argument
-    if args.len() != 2 {
-        println!("No arguments were provided.");
-        return;
-    }
-    let req = VersionReq::parse(&args[1]).unwrap();
+    let args = Cli::parse();
 
     let client = Client::new();
+
+    let from_version = Version::parse(&args.from);
+    if let Err(e) = from_version {
+        eprintln!("Error parsing version {}: {}", args.from, e);
+        return;
+    }
+    let from_version = from_version.unwrap();
+
+    let to: String;
+    if let Some(target_version) = args.to {
+        to = target_version;
+    } else {
+        match fetch_next(&client, &args.from).await {
+            Ok(target_version) => {
+                to = target_version.semver;
+            }
+            Err(e) => {
+                eprintln!("Error fetching next release: {}", e);
+                return;
+            }
+        }
+    }
+    let to_version = Version::parse(&to);
+    if let Err(e) = to_version {
+        eprintln!("Error parsing version {}: {}", to, e);
+        return;
+    }
+    let to_version = to_version.unwrap();
 
     match fetch_changelog(&client).await {
         Ok(content) => {
@@ -132,7 +186,8 @@ async fn main() {
                 */
                 let raw_version = entry.version.strip_prefix("v").unwrap();
                 let v = Version::parse(raw_version).unwrap();
-                if req.matches(&v) {
+
+                if from_version.lt(&v) && to_version.ge(&v) {
                     let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
                     if !contains_todo {
                         continue;
@@ -143,7 +198,9 @@ async fn main() {
                     );
                     let release = fetch_release(&client, &entry.version).await.unwrap();
                     if let Some(release) = parse_release(&release) {
-                        let upgrade_cmd = release.update.replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
+                        let upgrade_cmd = release
+                            .update
+                            .replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
                         println!("Update to release {}:\n{}", entry.version, upgrade_cmd)
                     } else {
                         error!("No update found for {}", entry.version);
