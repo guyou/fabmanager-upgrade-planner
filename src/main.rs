@@ -178,18 +178,13 @@ async fn main() {
         Ok(content) => {
             let changelog_entries = parse_changelog(&content);
             for entry in changelog_entries {
-                /*
-                println!(
-                    "Version: {}\nDate: {}\nContent:\n{:?}\n",
-                    version, entry.date, entry.changes
-                );
-                */
                 let raw_version = entry.version.strip_prefix("v").unwrap();
                 let v = Version::parse(raw_version).unwrap();
-
+                debug!("Found version {}",v);
                 if from_version.lt(&v) && to_version.ge(&v) {
                     let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
                     if !contains_todo {
+                        debug!("No todo");
                         continue;
                     }
                     info!(
