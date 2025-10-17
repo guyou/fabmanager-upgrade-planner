@@ -138,6 +138,18 @@ struct Cli {
     to: Option<String>,
 }
 
+fn extract_options(cmd :&str) -> Vec<&str> {
+    let mut res =Vec::new();
+    if let Some(args) = cmd.split(" -- ").nth(1) {
+        // Create a regex that matches the delimiters
+        let re = Regex::new(r#"\s*(-s|-e|-c)\s*\"[^\"]*\""#).unwrap();
+        res = re.find_iter(args).map(|m| m.as_str().trim()).collect();
+    } else {
+        error!("no arguments found in {}",cmd);
+    }
+    res
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -176,6 +188,7 @@ async fn main() {
 
     match fetch_changelog(&client).await {
         Ok(content) => {
+            let mut options: Vec<String> = Vec::new();
             let changelog_entries = parse_changelog(&content);
             for entry in changelog_entries {
                 let raw_version = entry.version.strip_prefix("v").unwrap();
@@ -196,12 +209,19 @@ async fn main() {
                         let upgrade_cmd = release
                             .update
                             .replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
-                        println!("Update to release {}:\n{}", entry.version, upgrade_cmd)
+                        println!("Update to release {}:\n{}", entry.version, upgrade_cmd);
+                        let current_opts = extract_options(release.update.as_str());
+                        for opt in current_opts {
+                            if !options.contains(&opt.to_string()) {
+                                options.push(opt.to_string());
+                            }
+                        }
                     } else {
                         error!("No update found for {}", entry.version);
                     }
                 }
             }
+            print!("Command:\n\\curl -sSL upgrade.fab.mn | bash -s -- -t {} {}", to_version, options.join(" "));
         }
         Err(e) => eprintln!("Error fetching changelog: {}", e),
     }
@@ -210,6 +230,15 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_options() {
+        let options = extract_options(
+            "bash -- -c \"rails fablab:stripe:set_gateway\" -c \"rails fablab:maintenance:rebuild_stylesheet\" -s \"rename-adminsys\"",
+        );
+        print!("{:?}", options);
+        assert_eq!(3, options.len());
+    }
 
     #[test]
     fn it_works() {
