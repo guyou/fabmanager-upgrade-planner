@@ -135,6 +135,9 @@ struct Cli {
     /// The target version
     #[arg(short, long)]
     to: Option<String>,
+    /// Fetch release
+    #[arg(short, long, default_value_t = false)]
+    disable_release: bool,
 }
 
 fn extract_options(cmd: &str) -> Vec<&str> {
@@ -203,24 +206,26 @@ async fn main() {
                         debug!("No todo");
                         continue;
                     }
-                    info!(
-                        "Version: {}\nDate: {}\nContent:\n{:?}\n",
-                        entry.version, entry.date, entry.changes
-                    );
-                    let release = fetch_release(&client, &entry.version).await.unwrap();
-                    if let Some(release) = parse_release(&release) {
-                        let upgrade_cmd = release
-                            .update
-                            .replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
-                        println!("Update to release {}:\n{}", entry.version, upgrade_cmd);
-                        let current_opts = extract_options(release.update.as_str());
-                        for opt in current_opts {
-                            if !options.contains(&opt.to_string()) {
-                                options.push(opt.to_string());
+                    if !args.disable_release {
+                        let release = fetch_release(&client, &entry.version).await.unwrap();
+                        if let Some(release) = parse_release(&release) {
+                            let upgrade_cmd = release
+                                .update
+                                .replace(" -- ", format!(" -- -t {} ", raw_version).as_str());
+                            println!("Update to release {}:\n{}", entry.version, upgrade_cmd);
+                            let current_opts = extract_options(release.update.as_str());
+                            debug!("Found options {:?}", current_opts);
+                            for opt in current_opts {
+                                if !options.contains(&opt.to_string()) {
+                                    debug!("Added {}",opt.to_string());
+                                    options.push(opt.to_string());
+                                } else {
+                                    debug!("Ignored {}",opt.to_string());
+                                }
                             }
+                        } else {
+                            error!("No update found for {}", entry.version);
                         }
-                    } else {
-                        error!("No update found for {}", entry.version);
                     }
                 }
             }
