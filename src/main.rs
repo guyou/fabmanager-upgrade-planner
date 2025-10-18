@@ -142,7 +142,7 @@ fn extract_options(cmd :&str) -> Vec<&str> {
     let mut res =Vec::new();
     if let Some(args) = cmd.split(" -- ").nth(1) {
         // Create a regex that matches the delimiters
-        let re = Regex::new(r#"\s*(-s|-e|-c)\s*\"[^\"]*\""#).unwrap();
+        let re = Regex::new(r#"\s*(-s|-e|-c|-p)\s*\"[^\"]*\""#).unwrap();
         res = re.find_iter(args).map(|m| m.as_str().trim()).collect();
     } else {
         error!("no arguments found in {}",cmd);
