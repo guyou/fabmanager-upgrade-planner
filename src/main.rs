@@ -8,7 +8,6 @@ use semver::Version;
 use serde::Deserialize;
 use std::collections::VecDeque;
 
-
 #[derive(Deserialize, Debug)]
 struct NextRelease {
     semver: String,
@@ -138,14 +137,14 @@ struct Cli {
     to: Option<String>,
 }
 
-fn extract_options(cmd :&str) -> Vec<&str> {
-    let mut res =Vec::new();
+fn extract_options(cmd: &str) -> Vec<&str> {
+    let mut res = Vec::new();
     if let Some(args) = cmd.split(" -- ").nth(1) {
         // Create a regex that matches the delimiters
         let re = Regex::new(r#"\s*(-s|-e|-c|-p)\s*\"[^\"]*\""#).unwrap();
         res = re.find_iter(args).map(|m| m.as_str().trim()).collect();
     } else {
-        error!("no arguments found in {}",cmd);
+        error!("no arguments found in {}", cmd);
     }
     res
 }
@@ -193,8 +192,12 @@ async fn main() {
             for entry in changelog_entries {
                 let raw_version = entry.version.strip_prefix("v").unwrap();
                 let v = Version::parse(raw_version).unwrap();
-                debug!("Found version {}",v);
+                debug!("Found version {}", v);
                 if from_version.lt(&v) && to_version.ge(&v) {
+                    debug!(
+                        "Version: {}\nDate: {}\nContent:\n{:?}\n",
+                        entry.version, entry.date, entry.changes
+                    );
                     let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
                     if !contains_todo {
                         debug!("No todo");
@@ -221,7 +224,11 @@ async fn main() {
                     }
                 }
             }
-            print!("Command:\n\\curl -sSL upgrade.fab.mn | bash -s -- -t {} {}", to_version, options.join(" "));
+            println!(
+                "Command:\n\\curl -sSL upgrade.fab.mn | bash -s -- -t {} {}",
+                to_version,
+                options.join(" ")
+            );
         }
         Err(e) => eprintln!("Error fetching changelog: {}", e),
     }
