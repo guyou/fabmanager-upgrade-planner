@@ -152,6 +152,15 @@ fn extract_options(cmd: &str) -> Vec<&str> {
     res
 }
 
+fn extract_todos(entry: &ChangelogEntry) -> Vec<String> {
+    entry
+        .changes
+        .iter()
+        .filter(|s| s.contains("[TODO DEPLOY]"))
+        .map(|s| s.replace("- [TODO DEPLOY] ", ""))
+        .collect()
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -191,6 +200,7 @@ async fn main() {
     match fetch_changelog(&client).await {
         Ok(content) => {
             let mut options: Vec<String> = Vec::new();
+            let mut todos: Vec<String> = Vec::new();
             let changelog_entries = parse_changelog(&content);
             for entry in changelog_entries {
                 let raw_version = entry.version.strip_prefix("v").unwrap();
@@ -201,10 +211,15 @@ async fn main() {
                         "Version: {}\nDate: {}\nContent:\n{:?}\n",
                         entry.version, entry.date, entry.changes
                     );
-                    let contains_todo = entry.changes.iter().any(|s| s.contains("[TODO DEPLOY]"));
-                    if !contains_todo {
+                    let deploy_entries: Vec<String> = extract_todos(&entry);
+                    if deploy_entries.is_empty() {
                         debug!("No todo");
                         continue;
+                    }
+                    for todo in deploy_entries {
+                        if !todos.contains(&todo.to_string()) {
+                            todos.push(todo.to_string());
+                        }
                     }
                     if !args.disable_release {
                         let release = fetch_release(&client, &entry.version).await.unwrap();
@@ -230,6 +245,14 @@ async fn main() {
                 }
             }
             println!(
+                "Todos:\n{}",
+                todos
+                    .iter()
+                    .map(|s| format!("\"{}\"", s))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+            println!(
                 "Command:\n\\curl -sSL upgrade.fab.mn | bash -s -- -t {} {}",
                 to_version,
                 options.join(" ")
@@ -250,6 +273,21 @@ mod tests {
         );
         print!("{:?}", options);
         assert_eq!(3, options.len());
+    }
+
+    macro_rules! fake_entry {
+    ($($x:expr),*) => ( ChangelogEntry{
+            date: String::new(),
+            version: String::new(),
+            changes: vec![$($x.to_string()),*],
+        });
+    }
+
+    #[test]
+    fn verify_single_todo() {
+        let entry = fake_entry!["- [TODO DEPLOY] `rails db:seed`"];
+        let todos = extract_todos(&entry);
+        assert_eq!(1, todos.len());
     }
 
     #[test]
